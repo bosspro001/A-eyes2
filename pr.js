@@ -28,7 +28,7 @@ app.use(express.json({ limit: "10mb" })); // Accept large base64 images
 // Serve static front-end files from 'public'
 app.use(express.static(path.join(process.cwd(), "public")));
 
-// Redirect root to index.html
+// Redirect root URL to index.html
 app.get("/", (req, res) => {
   res.sendFile(path.join(process.cwd(), "public", "index.html"));
 });
