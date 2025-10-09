@@ -1,70 +1,67 @@
 import express from "express";
-import cors from "cors";
-import ModelClient, { isUnexpected } from "@azure-rest/ai-inference";
-import { AzureKeyCredential } from "@azure/core-auth";
-import dotenv from "dotenv";
-
-dotenv.config();
-const token = process.env.GITHUB_TOKEN;
-
-if (!token) {
-  console.error("GitHub token missing in .env");
-  process.exit(1);
-}
-
-const client = ModelClient(
-  "https://models.github.ai/inference",
-  new AzureKeyCredential(token)
-);
+import fetch from "node-fetch";
+import multer from "multer";
+import fs from "fs";
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: "10mb" })); // for base64 images
+const upload = multer({ dest: "uploads/" });
+
 app.use(express.static("public"));
+app.use(express.json());
 
-app.post("/analyze-image", async (req, res) => {
-  const imageBase64 = req.body.image;
-  if (!imageBase64) {
-    return res.status(400).json({ error: "Image missing" });
-  }
-
+// ✅ Analyze route
+app.post("/analyze", upload.single("image"), async (req, res) => {
   try {
-    // Call Llama API
-    const response = await client.path("/chat/completions").post({
-      body: {
-        model: "meta/Llama-3.2-90B-Vision-Instruct",
-        messages: [
-          { role: "system", content: "You are a helpful assistant that describes images." },
+    const filePath = req.file.path;
+    const image = fs.readFileSync(filePath);
+    const base64Image = image.toString("base64");
+
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        input: [
           {
             role: "user",
             content: [
-              { type: "image_url", image_url: { url: imageBase64, details: "high" } },
-              { type: "text", text: "Describe this image in detail" }
+              { type: "input_text", text: "Describe this image in detail." },
+              { type: "input_image", image_data: base64Image }
             ]
           }
-        ],
-        temperature: 0.7,
-        max_tokens: 512
-      }
+        ]
+      }),
     });
 
-    if (isUnexpected(response)) {
-      console.error("Llama API error:", response.body.error);
-      return res.status(500).json({ error: "Llama API failed" });
+    // ⚠️ If OpenAI didn’t return valid JSON
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("OpenAI API error:", errText);
+      return res.status(500).json({ error: "OpenAI API Error", details: errText });
     }
 
-    // Make sure we have valid content
-    const analysis = response.body.choices?.[0]?.message?.content;
-    if (!analysis) {
-      return res.status(500).json({ error: "Invalid response from Llama API" });
-    }
+    const data = await response.json();
+    console.log("Response from API:", data);
 
-    res.json({ analysis });
+    const analysis = data.output_text || "No description returned.";
+    res.json({ result: analysis });
+
+    // Cleanup uploaded file
+    fs.unlinkSync(filePath);
   } catch (err) {
     console.error("Server error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server running on http://localhost:${port}`));
+// ✅ Serve HTML
+app.get("/", (req, res) => {
+  res.sendFile("index.html", { root: "public" });
+});
+
+// ✅ Port configuration (for Render + Local)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
