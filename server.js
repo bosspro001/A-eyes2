@@ -40,6 +40,10 @@ app.post("/analyze-image", async (req, res) => {
     return res.status(400).json({ error: "No image provided" });
   }
 
+  // ✅ Ensure image is properly formatted
+  const isBase64 = imageBase64.startsWith("data:image/");
+  const imageUrl = isBase64 ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
+
   try {
     const response = await client.path("/chat/completions").post({
       body: {
@@ -49,7 +53,7 @@ app.post("/analyze-image", async (req, res) => {
           {
             role: "user",
             content: [
-              { type: "image_url", image_url: { url: imageBase64, details: "high" } },
+              { type: "image_url", image_url: { url: imageUrl, details: "high" } },
               { type: "text", text: "Describe this image in detail." }
             ]
           }
@@ -59,12 +63,20 @@ app.post("/analyze-image", async (req, res) => {
       },
     });
 
+    // ✅ Check for unexpected response
     if (isUnexpected(response)) {
       console.error("❌ Unexpected response from API:", response.body);
       return res.status(500).json({ error: "Unexpected response", details: response.body });
     }
 
-    const analysis = response.body?.choices?.[0]?.message?.content || "No description returned.";
+    // ✅ Validate and safely extract response
+    const choices = response.body?.choices;
+    if (!choices || !Array.isArray(choices) || !choices[0]?.message?.content) {
+      console.error("❌ Invalid or empty response body:", response.body);
+      return res.status(500).json({ error: "Empty or invalid response from model" });
+    }
+
+    const analysis = choices[0].message.content;
     res.json({ analysis });
   } catch (err) {
     console.error("❌ Server error:", err);
