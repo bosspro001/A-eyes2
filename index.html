@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>A-eyes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body {
+    font-family: 'Orbitron', sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    color: #00fff0;
+    height: 100vh;
+    overflow-x: hidden;
+  }
+
+  header {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 15px 20px;
+    box-sizing: border-box;
+  }
+
+  h1 {
+    font-size: 2em;
+    text-shadow: 0 0 10px #00fff0, 0 0 20px #00fff0;
+    margin: 0;
+  }
+
+  video {
+    border: 4px solid #00fff0;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 480px;
+    height: auto;
+    box-shadow: 0 0 20px #00fff0, 0 0 40px #00fff0 inset;
+    margin-top: 20px;
+  }
+
+  canvas {
+    display: none;
+  }
+
+  #capture {
+    background: linear-gradient(90deg, #00fff0, #00c6ff);
+    border: none;
+    padding: 15px 40px;
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #000;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 20px #00fff0, 0 0 40px #00c6ff;
+    text-shadow: 0 0 5px #00fff0;
+    margin-top: 15px;
+  }
+
+  #capture:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 30px #00fff0, 0 0 60px #00c6ff;
+  }
+
+  #analysis {
+    margin-top: 25px;
+    font-size: 1.1em;
+    padding: 15px;
+    border-radius: 12px;
+    background: rgba(0, 255, 240, 0.1);
+    box-shadow: 0 0 15px #00fff0;
+    max-width: 90%;
+    word-wrap: break-word;
+    min-height: 50px;
+  }
+
+  /* Bottom-right settings button */
+  #settings {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: linear-gradient(90deg, #00fff0, #00c6ff);
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    cursor: pointer;
+    color: #000;
+    font-size: 1.5em;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 20px #00fff0, 0 0 40px #00c6ff;
+    transition: all 0.3s ease;
+    text-shadow: 0 0 5px #00fff0;
+  }
+
+  #settings:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 30px #00fff0, 0 0 60px #00c6ff;
+  }
+
+  /* Settings info tooltip above button */
+  #settings-info {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    background: rgba(0,0,0,0.8);
+    color: #00fff0;
+    padding: 10px 15px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    text-align: right;
+    box-shadow: 0 0 10px #00fff0;
+    display: none;
+  }
+
+  @media (max-width: 500px) {
+    h1 { font-size: 1.5em; }
+    #capture { font-size: 1em; padding: 12px 30px; }
+    #analysis { font-size: 1em; }
+  }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<header>
+  <h1>A-eyes</h1>
+</header>
+
+<video id="video" autoplay></video>
+<canvas id="canvas" width="480" height="360"></canvas>
+<button id="capture">Capture & Analyze</button>
+<div id="analysis"></div>
+
+<!-- Settings button and info -->
+<div id="settings">⚙️</div>
+<div id="settings-info">v.1.00<br>Created by Antoine Jabre</div>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const captureBtn = document.getElementById('capture');
+const analysisDiv = document.getElementById('analysis');
+const settingsBtn = document.getElementById('settings');
+const settingsInfo = document.getElementById('settings-info');
+
+// Toggle settings info
+settingsBtn.addEventListener('click', () => {
+  settingsInfo.style.display = settingsInfo.style.display === 'block' ? 'none' : 'block';
+});
+
+// Access webcam
+navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+  video.srcObject = stream;
+}).catch(err => console.error("Error accessing camera:", err));
+
+// Capture image and send to server
+captureBtn.addEventListener('click', async () => {
+  const context = canvas.getContext('2d');
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imageBase64 = canvas.toDataURL('image/jpeg');
+
+  analysisDiv.textContent = "Analyzing image...";
+
+  try {
+    const res = await fetch("/analyze-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: imageBase64 })
+    });
+
+    const data = await res.json();
+    analysisDiv.textContent = data.analysis;
+
+    // Text-to-speech
+    const utter = new SpeechSynthesisUtterance(data.analysis);
+    speechSynthesis.speak(utter);
+  } catch (err) {
+    analysisDiv.textContent = "Error analyzing image: " + err.message;
+  }
+});
+</script>
+
+</body>
+</html>
