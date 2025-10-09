@@ -19,45 +19,52 @@ const client = ModelClient(
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: "10mb" })); // for base64 images
 app.use(express.static("public"));
-
-app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/public/index.html");
-});
 
 app.post("/analyze-image", async (req, res) => {
   const imageBase64 = req.body.image;
-  if (!imageBase64) return res.status(400).send({ error: "Image missing" });
+  if (!imageBase64) {
+    return res.status(400).json({ error: "Image missing" });
+  }
 
   try {
+    // Call Llama API
     const response = await client.path("/chat/completions").post({
       body: {
         model: "meta/Llama-3.2-90B-Vision-Instruct",
         messages: [
-          { role: "system", content: "You are a helpful assistant that describes images in detail." },
-          { role: "user", content: [
-            { type: "image_url", image_url: { url: imageBase64, details: "high" } },
-            { type: "text", text: "Describe this image in detail." }
-          ]}
+          { role: "system", content: "You are a helpful assistant that describes images." },
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: imageBase64, details: "high" } },
+              { type: "text", text: "Describe this image in detail" }
+            ]
+          }
         ],
         temperature: 0.7,
         max_tokens: 512
       }
     });
 
-    if (isUnexpected(response) || !response.body.choices?.[0]?.message?.content) {
-      return res.status(500).send({ error: "Empty or invalid response from model" });
+    if (isUnexpected(response)) {
+      console.error("Llama API error:", response.body.error);
+      return res.status(500).json({ error: "Llama API failed" });
     }
 
-    const analysis = response.body.choices[0].message.content;
-    res.send({ analysis });
+    // Make sure we have valid content
+    const analysis = response.body.choices?.[0]?.message?.content;
+    if (!analysis) {
+      return res.status(500).json({ error: "Invalid response from Llama API" });
+    }
 
+    res.json({ analysis });
   } catch (err) {
-    console.error("Analyze error:", err);
-    res.status(500).send({ error: err.message });
+    console.error("Server error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Server running on http://localhost:${port}`));
