@@ -5,119 +5,175 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>A-eyes</title>
   <style>
+    /* Background & fonts */
     body {
-      background: radial-gradient(circle, #0f0f1d, #1a1a2e);
-      color: #fff;
-      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      font-family: 'Orbitron', sans-serif;
+      background: radial-gradient(circle, #0f0c29, #302b63, #24243e);
+      color: #00ffea;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
       min-height: 100vh;
-      margin: 0;
-      padding: 20px;
+      overflow-x: hidden;
     }
 
     h1 {
-      text-align: center;
-      margin-bottom: 20px;
-      color: #00ffff;
-      text-shadow: 0 0 10px #00ffff;
+      margin-top: 20px;
+      font-size: 3rem;
+      text-shadow: 0 0 10px #00ffea, 0 0 20px #00ffea;
     }
 
-    #video {
-      border: 3px solid #00ffff;
+    /* Webcam */
+    video {
+      border: 3px solid #00ffea;
       border-radius: 10px;
-      width: 320px;
-      height: 240px;
-      background: #000;
+      box-shadow: 0 0 20px #00ffea;
+      max-width: 90%;
+      max-height: 60vh;
+      margin-top: 30px;
     }
 
-    #captureBtn {
-      margin-top: 15px;
-      padding: 10px 20px;
+    /* Buttons */
+    .button {
+      margin: 15px 10px;
+      padding: 10px 25px;
+      font-size: 1.2rem;
+      font-family: 'Orbitron', sans-serif;
+      color: #0f0c29;
+      background: #00ffea;
       border: none;
-      border-radius: 5px;
-      background: #00ffff;
-      color: #000;
-      font-weight: bold;
+      border-radius: 8px;
       cursor: pointer;
-      box-shadow: 0 0 15px #00ffff;
+      box-shadow: 0 0 15px #00ffea;
       transition: 0.3s;
     }
 
-    #captureBtn:hover {
-      box-shadow: 0 0 30px #00ffff;
+    .button:hover {
+      box-shadow: 0 0 25px #00ffea;
+      transform: translateY(-2px);
     }
 
-    #result {
+    /* Analysis result */
+    #analysis {
       margin-top: 20px;
+      background: rgba(0,255,234,0.1);
       padding: 15px;
-      border-radius: 8px;
-      background: rgba(0,255,255,0.1);
-      width: 90%;
-      max-width: 500px;
-      text-align: left;
-      word-wrap: break-word;
+      border-radius: 10px;
+      max-width: 90%;
+      text-align: center;
+      font-size: 1.1rem;
+      box-shadow: 0 0 15px #00ffea;
+    }
+
+    /* Settings button */
+    #settingsBtn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: transparent;
+      border: 2px solid #00ffea;
+      color: #00ffea;
+      font-size: 1rem;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      box-shadow: 0 0 15px #00ffea;
+    }
+
+    #settingsPanel {
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      background: rgba(0,0,0,0.8);
+      padding: 15px;
+      border-radius: 10px;
+      color: #00ffea;
+      display: none;
+      box-shadow: 0 0 20px #00ffea;
     }
   </style>
 </head>
 <body>
   <h1>A-eyes</h1>
-  <video id="video" autoplay></video>
-  <button id="captureBtn">Capture & Analyze</button>
-  <div id="result">Analysis will appear here...</div>
+  <video id="webcam" autoplay playsinline></video>
+  <div>
+    <button class="button" id="captureBtn">Capture</button>
+    <button class="button" id="analyzeBtn">Analyze</button>
+  </div>
+  <div id="analysis">Analysis result will appear here...</div>
+
+  <!-- Settings -->
+  <button id="settingsBtn">⚙️</button>
+  <div id="settingsPanel">
+    <p>Version: 1.00</p>
+    <p>Created by: Antoine Jabre</p>
+  </div>
 
   <script>
-    const video = document.getElementById('video');
+    const webcam = document.getElementById('webcam');
     const captureBtn = document.getElementById('captureBtn');
-    const resultDiv = document.getElementById('result');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const analysisDiv = document.getElementById('analysis');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsPanel = document.getElementById('settingsPanel');
+
+    let capturedImage = null;
+
+    // Toggle settings
+    settingsBtn.addEventListener('click', () => {
+      settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+    });
 
     // Access webcam
-    async function initCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-      } catch (err) {
-        console.error("Error accessing camera:", err);
-        alert("Could not access camera: " + err.message);
-      }
-    }
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        webcam.srcObject = stream;
+      })
+      .catch(err => {
+        console.error('Webcam error:', err);
+        analysisDiv.innerText = 'Cannot access webcam.';
+      });
 
-    initCamera();
-
-    // Capture frame and send to server
-    captureBtn.addEventListener('click', async () => {
+    // Capture frame
+    captureBtn.addEventListener('click', () => {
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const base64Image = canvas.toDataURL('image/jpeg');
+      canvas.width = webcam.videoWidth;
+      canvas.height = webcam.videoHeight;
+      canvas.getContext('2d').drawImage(webcam, 0, 0);
+      capturedImage = canvas.toDataURL('image/jpeg');
+      analysisDiv.innerText = 'Image captured. Click Analyze.';
+    });
+
+    // Analyze captured image
+    analyzeBtn.addEventListener('click', async () => {
+      if (!capturedImage) {
+        analysisDiv.innerText = 'Please capture an image first.';
+        return;
+      }
+
+      analysisDiv.innerText = 'Analyzing image...';
 
       try {
         const response = await fetch('/analyze-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64Image })
+          body: JSON.stringify({ image: capturedImage })
         });
 
         const data = await response.json();
-        if (data.error) {
-          console.error("Error analyzing image:", data.error);
-          resultDiv.innerText = "Error: " + data.error;
-          return;
+
+        if (data.analysis) {
+          analysisDiv.innerText = data.analysis;
+        } else if (data.error) {
+          analysisDiv.innerText = `Error: ${data.error}`;
+        } else {
+          analysisDiv.innerText = 'Unexpected response from server.';
         }
-
-        resultDiv.innerText = data.analysis;
-
-        // Optional: Text-to-speech
-        const utterance = new SpeechSynthesisUtterance(data.analysis);
-        speechSynthesis.speak(utterance);
-
       } catch (err) {
-        console.error("Fetch error:", err);
-        resultDiv.innerText = "Fetch error: " + err.message;
+        console.error(err);
+        analysisDiv.innerText = 'Server error or network issue.';
       }
     });
   </script>
