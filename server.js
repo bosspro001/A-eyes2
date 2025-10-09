@@ -1,83 +1,81 @@
 import express from "express";
 import cors from "cors";
-import fetch from "node-fetch";
+import path from "path";
+import ModelClient, { isUnexpected } from "@azure-rest/ai-inference";
+import { AzureKeyCredential } from "@azure/core-auth";
 import dotenv from "dotenv";
+
 dotenv.config();
+
+const token = process.env.GITHUB_TOKEN;
+if (!token) {
+  console.error("❌ GitHub token missing. Set GITHUB_TOKEN in Render environment variables.");
+  process.exit(1);
+}
+
+// ✅ Initialize model client
+const client = ModelClient(
+  "https://models.github.ai/inference",
+  new AzureKeyCredential(token)
+);
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-const port = process.env.PORT || 3000;
+// ✅ Serve static files
+app.use(express.static(path.join(process.cwd(), "public")));
 
-// 🔹 Simple home route
+// ✅ Home route
 app.get("/", (req, res) => {
-  res.send("✅ Server is running and ready to analyze images!");
+  res.sendFile(path.join(process.cwd(), "public", "index.html"));
 });
 
-// 🔹 Analyze image route
-app.post("/analyze", async (req, res) => {
+// ✅ Image analysis route
+app.post("/analyze-image", async (req, res) => {
+  const imageBase64 = req.body.image;
+
+  if (!imageBase64) {
+    return res.status(400).json({ error: "No image provided" });
+  }
+
   try {
-    const { imageUrl } = req.body;
-
-    if (!imageUrl) {
-      return res.status(400).json({ error: "No image URL provided" });
-    }
-
-    // Azure model endpoint (replace if you’re using a custom one)
-    const endpoint =
-      "https://models.inference.ai.azure.com/imageanalysis:analyze";
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: [
+    const response = await client.path("/chat/completions").post({
+      body: {
+        model: "meta/Llama-3.2-90B-Vision-Instruct",
+        messages: [
+          { role: "system", content: "You are a helpful assistant that describes images." },
           {
             role: "user",
             content: [
-              { type: "text", text: "Describe this image clearly" },
-              { type: "image_url", image_url: imageUrl },
-            ],
-          },
+              { type: "image_url", image_url: { url: imageBase64, details: "high" } },
+              { type: "text", text: "Describe this image in detail." }
+            ]
+          }
         ],
-      }),
+        temperature: 0.7,
+        max_tokens: 512
+      },
     });
 
-    // 🧩 Parse response safely
-    const text = await response.text();
-    if (!text) {
-      return res.status(500).json({ error: "Empty response from AI model" });
+    if (isUnexpected(response)) {
+      console.error("❌ Unexpected API response:", response.body);
+      return res.status(500).json({ error: "Unexpected response from model" });
     }
 
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      console.error("⚠️ JSON parse failed:", text);
-      return res
-        .status(500)
-        .json({ error: "Invalid JSON from AI model", raw: text });
+    const analysis = response.body?.choices?.[0]?.message?.content;
+    if (!analysis) {
+      console.error("❌ Invalid or empty API response:", response.body);
+      return res.status(500).json({ error: "No content returned from model" });
     }
 
-    // 🧠 Extract result text
-    const result =
-      data.output?.[0]?.content?.[0]?.text ||
-      data.choices?.[0]?.message?.content ||
-      "No description found.";
-
-    res.json({ result });
-  } catch (error) {
-    console.error("❌ Server error:", error);
-    res.status(500).json({ error: error.message });
+    res.json({ analysis });
+  } catch (err) {
+    console.error("❌ Server error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// 🔹 Start server
-app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-});
+// ✅ Use Render’s port
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
